@@ -1,3 +1,6 @@
+import { db } from "./firebase";
+import { collection, addDoc, getDocs, deleteDoc, doc, updateDoc } from "firebase/firestore";
+
 import { useState, useEffect, useRef } from "react";
 
 const FONTS = `
