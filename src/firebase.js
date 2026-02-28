@@ -1,20 +1,13 @@
-// ============================================================
-//  firebase.js  —  Somnara's Diaries
-//  STEP: Replace every value below with your own Firebase config
-//  Get it from: Firebase Console → Project Settings → Your Apps
-// ============================================================
-
 import { initializeApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyCvi8Op90ooIv3Z4pWontj8BwKvvT8TcIg",
-  authDomain: "somnaras-diaries.firebaseapp.com",
-  projectId: "somnaras-diaries",
-  storageBucket: "somnaras-diaries.firebasestorage.app",
-  messagingSenderId: "409604513559",
-  appId: "1:409604513559:web:059ab8e27c07fd6062e152",
-  measurementId: "G-0624P896SM"
+  apiKey:            import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain:        import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId:         import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket:     import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId:             import.meta.env.VITE_FIREBASE_APP_ID,
 };
 
 const app = initializeApp(firebaseConfig);

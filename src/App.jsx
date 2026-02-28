@@ -1,12 +1,24 @@
 import { db } from "./firebase";
-import { collection, addDoc, getDocs, deleteDoc, doc, updateDoc } from "firebase/firestore";
+import {
+  collection,
+  addDoc,
+  getDocs,
+  deleteDoc,
+  doc,
+  updateDoc,
+  query,
+  where,
+  orderBy,
+  serverTimestamp,
+} from "firebase/firestore";
+import { useState, useEffect } from "react";
 
-import { useState, useEffect, useRef } from "react";
-
+// ─── FONTS ───────────────────────────────────────────────────
 const FONTS = `
 @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400;1,500&family=Jost:wght@300;400;500&display=swap');
 `;
 
+// ─── CSS ─────────────────────────────────────────────────────
 const CSS = `
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -231,8 +243,14 @@ const CSS = `
     content: ''; position: absolute; inset: 0;
     background: linear-gradient(to top, rgba(61,43,31,0.18) 0%, transparent 50%);
   }
+  .gallery-placeholder {
+    width: 100%; height: 100%; min-height: 180px;
+    background: linear-gradient(135deg, var(--warm-sand), var(--beige));
+    display: flex; align-items: center; justify-content: center;
+    font-size: 2.5rem; opacity: 0.4;
+  }
 
-  /* ── BLOG LISTING (for inner pages) ── */
+  /* ── BLOG LISTING ── */
   .blog-hero {
     padding: 8rem 2rem 4rem;
     background: linear-gradient(160deg, var(--beige) 0%, var(--warm-sand) 100%);
@@ -260,6 +278,7 @@ const CSS = `
     width: 100%; height: 100%;
     display: flex; align-items: center; justify-content: center;
     font-size: 3rem; opacity: 0.3;
+    background: linear-gradient(135deg, var(--warm-sand), var(--beige));
   }
   .post-card-body { padding: 1.8rem; flex: 1; display: flex; flex-direction: column; }
   .post-tag {
@@ -284,7 +303,7 @@ const CSS = `
   .read-more-btn::after { content: '→'; transition: transform 0.2s; }
   .read-more-btn:hover::after { transform: translateX(4px); }
 
-  /* ── PERSONAL JOURNAL LAYOUT ── */
+  /* ── JOURNAL LAYOUT ── */
   .journal-section { padding: 5rem 2rem; background: var(--cream); }
   .journal-inner { max-width: 750px; margin: 0 auto; }
   .journal-entry {
@@ -314,6 +333,35 @@ const CSS = `
     transition: color 0.2s;
   }
   .journal-read:hover { color: var(--dark-brown); }
+
+  /* ── LOADING SPINNER ── */
+  .loading-wrap {
+    display: flex; align-items: center; justify-content: center;
+    padding: 5rem 2rem; flex-direction: column; gap: 1.2rem;
+  }
+  .spinner {
+    width: 36px; height: 36px; border-radius: 50%;
+    border: 2px solid var(--warm-sand);
+    border-top-color: var(--medium-brown);
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .loading-text {
+    font-family: 'Cormorant Garamond', serif; font-style: italic;
+    font-size: 1rem; color: var(--text-light);
+  }
+
+  /* ── TOAST NOTIFICATION ── */
+  .toast {
+    position: fixed; bottom: 6rem; left: 50%; transform: translateX(-50%);
+    background: var(--espresso); color: var(--cream);
+    padding: 0.8rem 2rem; border-radius: 30px; z-index: 300;
+    font-size: 0.82rem; letter-spacing: 0.08em;
+    animation: toastIn 0.3s ease, toastOut 0.3s ease 2.2s forwards;
+    box-shadow: 0 8px 24px rgba(61,43,31,0.25);
+  }
+  @keyframes toastIn { from { opacity: 0; transform: translateX(-50%) translateY(10px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
+  @keyframes toastOut { to { opacity: 0; transform: translateX(-50%) translateY(10px); } }
 
   /* ── CMS MODAL ── */
   .modal-overlay {
@@ -350,7 +398,8 @@ const CSS = `
   .form-group input:focus, .form-group textarea:focus, .form-group select:focus {
     border-color: var(--medium-brown);
   }
-  .form-group textarea { min-height: 120px; resize: vertical; }
+  .form-group textarea { min-height: 140px; resize: vertical; }
+  .form-hint { font-size: 0.72rem; color: var(--text-light); margin-top: 0.4rem; }
   .modal-actions { display: flex; gap: 1rem; justify-content: flex-end; margin-top: 2rem; }
   .btn-cancel {
     padding: 0.65rem 1.5rem; border: 1px solid var(--warm-sand); border-radius: 30px;
@@ -363,9 +412,10 @@ const CSS = `
     padding: 0.65rem 1.8rem; border: 1px solid var(--medium-brown); border-radius: 30px;
     background: var(--medium-brown); color: var(--white); cursor: pointer;
     font-family: 'Jost', sans-serif; font-size: 0.8rem; letter-spacing: 0.1em;
-    transition: all 0.25s;
+    transition: all 0.25s; display: flex; align-items: center; gap: 0.5rem;
   }
   .btn-save:hover { background: var(--dark-brown); border-color: var(--dark-brown); }
+  .btn-save:disabled { opacity: 0.6; cursor: not-allowed; }
 
   /* ── CMS TOOLBAR ── */
   .cms-bar {
@@ -387,7 +437,7 @@ const CSS = `
   }
   .cms-action-row { display: flex; align-items: center; gap: 0.8rem; }
 
-  /* ── POST DELETE ── */
+  /* ── POST ACTIONS ── */
   .post-actions { display: flex; gap: 0.6rem; }
   .btn-edit, .btn-delete {
     padding: 0.3rem 0.7rem; border-radius: 20px; font-size: 0.7rem;
@@ -398,6 +448,15 @@ const CSS = `
   .btn-edit:hover { border-color: var(--medium-brown); color: var(--medium-brown); }
   .btn-delete { border-color: #deb8b8; color: #a06060; background: transparent; }
   .btn-delete:hover { background: #f5e8e8; }
+
+  /* ── EMPTY STATE ── */
+  .empty-state {
+    text-align: center; padding: 4rem 2rem; color: var(--text-light);
+  }
+  .empty-state p {
+    font-family: 'Cormorant Garamond', serif; font-style: italic;
+    font-size: 1.2rem; margin-bottom: 1rem;
+  }
 
   /* ── FOOTER ── */
   .footer {
@@ -420,12 +479,7 @@ const CSS = `
   .footer-copy { font-size: 0.78rem; color: rgba(196,168,130,0.5); letter-spacing: 0.08em; }
 
   /* ── UTILITY ── */
-  .fade-in { animation: heroFade 0.6s ease-out both; }
-
-  .empty-state {
-    text-align: center; padding: 4rem 2rem; color: var(--text-light);
-  }
-  .empty-state p { font-family: 'Cormorant Garamond', serif; font-style: italic; font-size: 1.2rem; margin-bottom: 1rem; }
+  .fade-in { animation: heroFade 0.5s ease-out both; }
 
   /* ── HAMBURGER ── */
   .hamburger { display: none; flex-direction: column; gap: 5px; cursor: pointer; padding: 4px; background: none; border: none; }
@@ -459,69 +513,146 @@ const CSS = `
   }
 `;
 
-// Placeholder images using picsum (warm-toned filters via CSS)
+// ─── IMAGES — paste your own URLs here ───────────────────────
 const IMAGES = {
-  hero: "https://images.unsplash.com/photo-1481627834876-b7833e8f5570?w=1400&q=80",
-  about: "https://images.unsplash.com/photo-1455390582262-044cdead277a?w=600&q=80",
-  g1: "https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=600&q=80",
-  g2: "https://images.unsplash.com/photo-1512820790803-83ca734da794?w=400&q=80",
-  g3: "https://images.unsplash.com/photo-1474552226712-ac0f0961a954?w=400&q=80",
-  college1: "https://images.unsplash.com/photo-1523580846011-d3a5bc25702b?w=600&q=80",
-  college2: "https://images.unsplash.com/photo-1541829070764-84a7d30dd3f3?w=600&q=80",
-  travel1: "https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?w=600&q=80",
-  travel2: "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?w=600&q=80",
+  about:  "PASTE_ABOUT_IMAGE_URL",
+  g1:     "PASTE_GALLERY_IMAGE_1_URL",
+  g2:     "PASTE_GALLERY_IMAGE_2_URL",
+  g3:     "PASTE_GALLERY_IMAGE_3_URL",
 };
 
-const INITIAL_POSTS = {
-  college: [
-    { id: 1, title: "The Day I Got My First A+", excerpt: "It felt like the universe paused for just a moment to acknowledge the effort — the late nights, the cold coffee, the highlighter-stained fingers.", date: "Feb 10, 2026", img: IMAGES.college1 },
-    { id: 2, title: "Friendships That Bloom in Lecture Halls", excerpt: "There is something about shared stress that bonds people in ways ordinary life rarely can. We were strangers who became constants.", date: "Jan 22, 2026", img: IMAGES.college2 },
-  ],
-  travel: [
-    { id: 1, title: "A Weekend Lost in the Mountains", excerpt: "The road curved endlessly, and for once I didn't mind being lost. The mountains have a way of making small worries feel very far away.", date: "Feb 18, 2026", img: IMAGES.travel1 },
-    { id: 2, title: "Solo and Somewhere New", excerpt: "Traveling alone teaches you that your own company, given the right backdrop, is more than enough. Sometimes it is everything.", date: "Jan 5, 2026", img: IMAGES.travel2 },
-  ],
-  personal: [
-    { id: 1, title: "On Slowness and Learning to Rest", date: "Feb 20, 2026", excerpt: "I used to think productivity was the measure of a good day. Now I think a long walk counts. A warm cup of tea counts. Sitting quietly counts." },
-    { id: 2, title: "Things I Noticed This Winter", date: "Jan 30, 2026", excerpt: "The way steam rises from a mug. How silence sounds different in the cold. The particular warmth of lamp light on old wood. Small gifts, all of them." },
-  ],
-};
+// ─── FIRESTORE HELPERS ───────────────────────────────────────
+const COLLECTION = "posts";
 
-let nextId = 10;
+async function fetchPostsByCategory(category) {
+  const q = query(
+    collection(db, COLLECTION),
+    where("category", "==", category),
+    orderBy("createdAt", "desc")
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+}
 
+async function createPost(data) {
+  return await addDoc(collection(db, COLLECTION), {
+    ...data,
+    createdAt: serverTimestamp(),
+  });
+}
+
+async function editPost(id, data) {
+  return await updateDoc(doc(db, COLLECTION, id), {
+    title:    data.title,
+    excerpt:  data.excerpt,
+    date:     data.date,
+    imageUrl: data.imageUrl || "",
+  });
+}
+
+async function removePost(id) {
+  return await deleteDoc(doc(db, COLLECTION, id));
+}
+
+// ─── MAIN APP ────────────────────────────────────────────────
 export default function App() {
   const [page, setPage] = useState("home");
-  const [posts, setPosts] = useState(INITIAL_POSTS);
-  const [modal, setModal] = useState(null); // null | 'new' | post object
-  const [form, setForm] = useState({ title: "", excerpt: "", date: "", category: "college" });
+  const [posts, setPosts] = useState({ college: [], travel: [], personal: [] });
+  const [loading, setLoading] = useState({});
+  const [modal, setModal] = useState(null);       // null | "new" | post object
+  const [form, setForm] = useState({ title: "", excerpt: "", date: "", imageUrl: "", category: "college" });
+  const [saving, setSaving] = useState(false);
   const [mobileMenu, setMobileMenu] = useState(false);
+  const [toast, setToast] = useState("");
 
-  const navigate = (p) => { setPage(p); setMobileMenu(false); window.scrollTo({ top: 0, behavior: "smooth" }); };
+  // Load posts when page changes (only category pages)
+  useEffect(() => {
+    if (page === "home") return;
+    loadPosts(page === "personal" ? "personal" : page);
+  }, [page]);
 
+  const loadPosts = async (cat) => {
+    setLoading(l => ({ ...l, [cat]: true }));
+    try {
+      const data = await fetchPostsByCategory(cat);
+      setPosts(p => ({ ...p, [cat]: data }));
+    } catch (e) {
+      showToast("Could not load posts. Check Firestore rules.");
+      console.error(e);
+    } finally {
+      setLoading(l => ({ ...l, [cat]: false }));
+    }
+  };
+
+  const showToast = (msg) => {
+    setToast(msg);
+    setTimeout(() => setToast(""), 2600);
+  };
+
+  const navigate = (p) => {
+    setPage(p);
+    setMobileMenu(false);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  // ── MODAL OPEN ──
   const openNew = () => {
-    const cat = page === "home" ? "college" : page === "personal" ? "personal" : page;
-    setForm({ title: "", excerpt: "", date: new Date().toLocaleDateString("en-US",{year:"numeric",month:"short",day:"numeric"}), category: cat });
+    const cat = page === "home" ? "college" : page;
+    setForm({
+      title: "", excerpt: "", imageUrl: "",
+      date: new Date().toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" }),
+      category: cat,
+    });
     setModal("new");
   };
+
   const openEdit = (post, cat) => {
-    setForm({ ...post, category: cat });
+    setForm({ ...post, category: cat, imageUrl: post.imageUrl || "" });
     setModal(post);
   };
-  const closeModal = () => setModal(null);
-  const savePost = () => {
+
+  const closeModal = () => { if (!saving) setModal(null); };
+
+  // ── SAVE (create or update) ──
+  const savePost = async () => {
     if (!form.title.trim()) return;
-    const cat = form.category;
-    if (modal === "new") {
-      const newPost = { id: nextId++, title: form.title, excerpt: form.excerpt, date: form.date };
-      setPosts(p => ({ ...p, [cat]: [newPost, ...p[cat]] }));
-    } else {
-      setPosts(p => ({ ...p, [cat]: p[cat].map(x => x.id === modal.id ? { ...x, title: form.title, excerpt: form.excerpt, date: form.date } : x) }));
+    setSaving(true);
+    try {
+      const cat = form.category;
+      if (modal === "new") {
+        await createPost({
+          title:    form.title,
+          excerpt:  form.excerpt,
+          date:     form.date,
+          imageUrl: form.imageUrl || "",
+          category: cat,
+        });
+        showToast("Entry saved ✦");
+      } else {
+        await editPost(modal.id, form);
+        showToast("Entry updated ✦");
+      }
+      closeModal();
+      await loadPosts(cat);
+    } catch (e) {
+      showToast("Error saving. Check console.");
+      console.error(e);
+    } finally {
+      setSaving(false);
     }
-    closeModal();
   };
-  const deletePost = (cat, id) => {
-    if (!window.confirm("Delete this entry?")) return;
-    setPosts(p => ({ ...p, [cat]: p[cat].filter(x => x.id !== id) }));
+
+  // ── DELETE ──
+  const deletePost = async (cat, id) => {
+    if (!window.confirm("Delete this entry? This cannot be undone.")) return;
+    try {
+      await removePost(id);
+      showToast("Entry deleted.");
+      setPosts(p => ({ ...p, [cat]: p[cat].filter(x => x.id !== id) }));
+    } catch (e) {
+      showToast("Error deleting. Check console.");
+      console.error(e);
+    }
   };
 
   return (
@@ -551,10 +682,10 @@ export default function App() {
       )}
 
       {/* PAGES */}
-      {page === "home" && <HomePage navigate={navigate} />}
-      {page === "college" && <BlogPage title="College" subtitle="Chapters of growth, late nights, and becoming." posts={posts.college} category="college" onEdit={openEdit} onDelete={deletePost} />}
-      {page === "travel" && <BlogPage title="Travel" subtitle="Places visited, horizons widened, self discovered." posts={posts.travel} category="travel" onEdit={openEdit} onDelete={deletePost} />}
-      {page === "personal" && <JournalPage posts={posts.personal} onEdit={openEdit} onDelete={deletePost} />}
+      {page === "home"     && <HomePage navigate={navigate} />}
+      {page === "college"  && <BlogPage title="College" subtitle="Chapters of growth, late nights, and becoming." posts={posts.college} loading={loading.college} category="college" onEdit={openEdit} onDelete={deletePost} />}
+      {page === "travel"   && <BlogPage title="Travel" subtitle="Places visited, horizons widened, self discovered." posts={posts.travel} loading={loading.travel} category="travel" onEdit={openEdit} onDelete={deletePost} />}
+      {page === "personal" && <JournalPage posts={posts.personal} loading={loading.personal} onEdit={openEdit} onDelete={deletePost} />}
 
       {/* FOOTER */}
       <footer className="footer">
@@ -575,11 +706,15 @@ export default function App() {
         </div>
       </div>
 
+      {/* TOAST */}
+      {toast && <div className="toast">{toast}</div>}
+
       {/* MODAL */}
       {modal && (
         <div className="modal-overlay" onClick={e => e.target === e.currentTarget && closeModal()}>
           <div className="modal">
             <h2>{modal === "new" ? "New Entry" : "Edit Entry"}</h2>
+
             <div className="form-group">
               <label>Category</label>
               <select value={form.category} onChange={e => setForm(f => ({...f, category: e.target.value}))}>
@@ -588,21 +723,49 @@ export default function App() {
                 <option value="personal">Personal Reflections</option>
               </select>
             </div>
+
             <div className="form-group">
               <label>Title</label>
-              <input value={form.title} onChange={e => setForm(f => ({...f, title: e.target.value}))} placeholder="Entry title…" />
+              <input
+                value={form.title}
+                onChange={e => setForm(f => ({...f, title: e.target.value}))}
+                placeholder="Entry title…"
+              />
             </div>
+
             <div className="form-group">
               <label>Excerpt / Body</label>
-              <textarea value={form.excerpt} onChange={e => setForm(f => ({...f, excerpt: e.target.value}))} placeholder="Write something beautiful…" />
+              <textarea
+                value={form.excerpt}
+                onChange={e => setForm(f => ({...f, excerpt: e.target.value}))}
+                placeholder="Write something beautiful…"
+              />
             </div>
+
+            <div className="form-group">
+              <label>Cover Image URL <span style={{fontWeight:300, textTransform:'none', letterSpacing:0}}>(optional)</span></label>
+              <input
+                value={form.imageUrl}
+                onChange={e => setForm(f => ({...f, imageUrl: e.target.value}))}
+                placeholder="https://your-image-url.jpg"
+              />
+              <p className="form-hint">Paste a direct image link (e.g. from Imgur, Unsplash, etc.)</p>
+            </div>
+
             <div className="form-group">
               <label>Date</label>
-              <input value={form.date} onChange={e => setForm(f => ({...f, date: e.target.value}))} placeholder="e.g. Feb 27, 2026" />
+              <input
+                value={form.date}
+                onChange={e => setForm(f => ({...f, date: e.target.value}))}
+                placeholder="e.g. Feb 27, 2026"
+              />
             </div>
+
             <div className="modal-actions">
-              <button className="btn-cancel" onClick={closeModal}>Cancel</button>
-              <button className="btn-save" onClick={savePost}>Save Entry</button>
+              <button className="btn-cancel" onClick={closeModal} disabled={saving}>Cancel</button>
+              <button className="btn-save" onClick={savePost} disabled={saving}>
+                {saving ? "Saving…" : "Save Entry"}
+              </button>
             </div>
           </div>
         </div>
@@ -611,10 +774,10 @@ export default function App() {
   );
 }
 
+// ─── HOME PAGE ───────────────────────────────────────────────
 function HomePage({ navigate }) {
   return (
     <>
-      {/* HERO */}
       <section className="hero">
         <div className="hero-bg" />
         <div className="hero-texture" />
@@ -637,7 +800,10 @@ function HomePage({ navigate }) {
           <div className="about-layout">
             <div className="about-left">
               <div className="about-img-wrap">
-                <img src={IMAGES.about} alt="Writing desk" onError={e => e.target.style.display='none'} />
+                {IMAGES.about && IMAGES.about !== "PASTE_ABOUT_IMAGE_URL"
+                  ? <img src={IMAGES.about} alt="Writing desk" onError={e => e.target.style.display='none'} />
+                  : <div style={{width:'100%',height:'100%',background:'linear-gradient(135deg,#e8d9c0,#f0e8d8)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'4rem',opacity:0.3}}>✍️</div>
+                }
               </div>
               <div className="about-img-deco" />
             </div>
@@ -660,9 +826,9 @@ function HomePage({ navigate }) {
           <h2 className="section-title">Choose your chapter.</h2>
           <div className="cat-grid">
             {[
-              { key: "college", icon: "📖", name: "College", desc: "Notes from the years of studying, discovering, and quietly becoming someone." },
-              { key: "travel", icon: "✈︎", name: "Travel", desc: "Places that changed my perspective and roads that brought me back to myself." },
-              { key: "personal", icon: "🌿", name: "Personal Reflections", desc: "Honest thoughts on slowness, wonder, and the small beauty of ordinary days." },
+              { key: "college",  icon: "📖", name: "College",               desc: "Notes from the years of studying, discovering, and quietly becoming someone." },
+              { key: "travel",   icon: "✈︎",  name: "Travel",                desc: "Places that changed my perspective and roads that brought me back to myself." },
+              { key: "personal", icon: "🌿", name: "Personal Reflections",  desc: "Honest thoughts on slowness, wonder, and the small beauty of ordinary days." },
             ].map(cat => (
               <div key={cat.key} className="cat-card" onClick={() => navigate(cat.key)}>
                 <div className="cat-icon">{cat.icon}</div>
@@ -681,15 +847,18 @@ function HomePage({ navigate }) {
           <span className="section-label">Aesthetic</span>
           <h2 className="section-title">Life in warm tones.</h2>
           <div className="gallery-grid">
-            <div className="gallery-item" style={{ height: 420 }}>
-              <img src={IMAGES.g1} alt="Books" />
-            </div>
-            <div className="gallery-item" style={{ height: 200 }}>
-              <img src={IMAGES.g2} alt="Coffee" />
-            </div>
-            <div className="gallery-item" style={{ height: 200 }}>
-              <img src={IMAGES.g3} alt="Candle" />
-            </div>
+            {[
+              { key: "g1", label: "Books", height: 420 },
+              { key: "g2", label: "Coffee", height: 200 },
+              { key: "g3", label: "Candle", height: 200 },
+            ].map(({ key, label, height }) => (
+              <div key={key} className="gallery-item" style={{ height }}>
+                {IMAGES[key] && IMAGES[key] !== `PASTE_GALLERY_IMAGE_${key.slice(-1)}_URL`
+                  ? <img src={IMAGES[key]} alt={label} />
+                  : <div className="gallery-placeholder">✦</div>
+                }
+              </div>
+            ))}
           </div>
         </div>
       </section>
@@ -697,17 +866,23 @@ function HomePage({ navigate }) {
   );
 }
 
-function BlogPage({ title, subtitle, posts, category, onEdit, onDelete }) {
+// ─── BLOG PAGE (College / Travel) ────────────────────────────
+function BlogPage({ title, subtitle, posts, loading, category, onEdit, onDelete }) {
   return (
     <>
       <div className="blog-hero">
-        <span className="section-label" style={{ display: "block", marginBottom: "0.8rem" }}>{category}</span>
+        <span className="section-label" style={{ display:"block", marginBottom:"0.8rem" }}>{category}</span>
         <h1 className="blog-hero-title">{title}</h1>
         <p className="blog-hero-sub">{subtitle}</p>
       </div>
       <section className="posts-section">
         <div className="section-inner">
-          {posts.length === 0 ? (
+          {loading ? (
+            <div className="loading-wrap">
+              <div className="spinner" />
+              <span className="loading-text">Loading entries…</span>
+            </div>
+          ) : posts.length === 0 ? (
             <div className="empty-state">
               <p>No entries yet. Begin writing your first.</p>
             </div>
@@ -716,10 +891,11 @@ function BlogPage({ title, subtitle, posts, category, onEdit, onDelete }) {
               {posts.map(post => (
                 <div key={post.id} className="post-card fade-in">
                   <div className="post-card-img">
-                    {post.img
-                      ? <img src={post.img} alt={post.title} />
-                      : <div className="post-card-img-placeholder">✦</div>
+                    {post.imageUrl
+                      ? <img src={post.imageUrl} alt={post.title} onError={e => { e.target.style.display='none'; e.target.nextSibling.style.display='flex'; }} />
+                      : null
                     }
+                    <div className="post-card-img-placeholder" style={{ display: post.imageUrl ? 'none' : 'flex' }}>✦</div>
                   </div>
                   <div className="post-card-body">
                     <div className="post-tag">{category}</div>
@@ -727,7 +903,7 @@ function BlogPage({ title, subtitle, posts, category, onEdit, onDelete }) {
                     <div className="post-excerpt">{post.excerpt}</div>
                     <div className="post-footer">
                       <span className="post-date">{post.date}</span>
-                      <div style={{ display: "flex", alignItems: "center", gap: "0.8rem" }}>
+                      <div style={{ display:"flex", alignItems:"center", gap:"0.8rem" }}>
                         <div className="post-actions">
                           <button className="btn-edit" onClick={() => onEdit(post, category)}>Edit</button>
                           <button className="btn-delete" onClick={() => onDelete(category, post.id)}>Delete</button>
@@ -746,17 +922,23 @@ function BlogPage({ title, subtitle, posts, category, onEdit, onDelete }) {
   );
 }
 
-function JournalPage({ posts, onEdit, onDelete }) {
+// ─── JOURNAL PAGE (Personal Reflections) ─────────────────────
+function JournalPage({ posts, loading, onEdit, onDelete }) {
   return (
     <>
       <div className="blog-hero">
-        <span className="section-label" style={{ display: "block", marginBottom: "0.8rem" }}>personal</span>
+        <span className="section-label" style={{ display:"block", marginBottom:"0.8rem" }}>personal</span>
         <h1 className="blog-hero-title">Personal Reflections</h1>
         <p className="blog-hero-sub">Honest, unhurried, entirely my own.</p>
       </div>
       <section className="journal-section">
         <div className="journal-inner">
-          {posts.length === 0 ? (
+          {loading ? (
+            <div className="loading-wrap">
+              <div className="spinner" />
+              <span className="loading-text">Loading entries…</span>
+            </div>
+          ) : posts.length === 0 ? (
             <div className="empty-state">
               <p>The page is blank. A beginning awaits.</p>
             </div>
@@ -766,7 +948,7 @@ function JournalPage({ posts, onEdit, onDelete }) {
                 <div className="journal-date">{post.date}</div>
                 <div className="journal-title">{post.title}</div>
                 <div className="journal-body">{post.excerpt}</div>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: "1.5rem" }}>
+                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginTop:"1.5rem" }}>
                   <button className="journal-read">Continue reading →</button>
                   <div className="post-actions">
                     <button className="btn-edit" onClick={() => onEdit(post, "personal")}>Edit</button>
