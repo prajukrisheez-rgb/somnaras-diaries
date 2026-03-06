@@ -515,10 +515,10 @@ const CSS = `
 
 // ─── IMAGES — paste your own URLs here ───────────────────────
 const IMAGES = {
-  about:  "PASTE_ABOUT_IMAGE_URL",
-  g1:     "PASTE_GALLERY_IMAGE_1_URL",
-  g2:     "PASTE_GALLERY_IMAGE_2_URL",
-  g3:     "PASTE_GALLERY_IMAGE_3_URL",
+  about:  "https://unsplash.com/photos/UgA3Xvi3SkA/download?force=true",
+  g1:     "https://unsplash.com/photos/P-BPGW56GFo/download?force=true",
+  g2:     "https://unsplash.com/photos/IhxM7w392e0/download?force=true",
+  g3:     "https://unsplash.com/photos/ky-ni5-FAKk/download?force=true",
 };
 
 // ─── FIRESTORE HELPERS ───────────────────────────────────────
